@@ -6,14 +6,17 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'chore: release')"
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -22,62 +25,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
 
-      - name: Version bump
-        id: version
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -z "$LAST_TAG" ]; then
-            RANGE="HEAD"
-          else
-            RANGE="${LAST_TAG}..HEAD"
-          fi
-
-          COMMITS=$(git log "$RANGE" --pretty=format:"%s" 2>/dev/null || echo "")
-
-          if echo "$COMMITS" | grep -qiE "^feat!:|BREAKING CHANGE"; then
-            BUMP="major"
-          elif echo "$COMMITS" | grep -qiE "^feat"; then
-            BUMP="minor"
-          else
-            BUMP="patch"
-          fi
-
-          CURRENT=$(node -p "require('./package.json').version")
-          PUBLISHED=$(npm view @crouton-kit/grove version 2>/dev/null || echo "0.0.0")
-
-          if [ "$CURRENT" = "$PUBLISHED" ]; then
-            npm version "$BUMP" --no-git-tag-version
-            NEW_VERSION=$(node -p "require('./package.json').version")
-            echo "bumped=true" >> "$GITHUB_OUTPUT"
-            echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-            echo "Bumped $CURRENT → $NEW_VERSION ($BUMP)"
-          else
-            echo "bumped=false" >> "$GITHUB_OUTPUT"
-            echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
-            echo "Current version $CURRENT not yet published, skipping bump"
-          fi
-
-      - name: Build
-        run: pnpm build
-
-      - name: Publish
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Tag and push version
-        if: steps.version.outputs.bumped == 'true'
+      - name: Bump version
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json 2>/dev/null || git add package.json
-          git commit -m "chore: release v${{ steps.version.outputs.version }}"
-          git tag "v${{ steps.version.outputs.version }}"
-          git push
-          git push --tags
+          npm version patch -m "chore: release v%s"
+          git push --follow-tags
+
+      - run: pnpm build
+
+      - run: npm publish --provenance --access public
+        env:
+          npm_config_registry: https://registry.npmjs.org
