@@ -24,13 +24,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
-      - name: Upgrade npm for OIDC publish support
-        run: |
-          npm cache clean --force || true
-          npm install -g npm@latest --force
-
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
 
       - name: Bump version
