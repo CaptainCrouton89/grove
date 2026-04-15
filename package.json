@@ -1,15 +1,33 @@
 {
-  "name": "grove",
+  "name": "@crouton-kit/grove",
   "version": "0.1.0",
-  "description": "Parallel project instance manager",
+  "description": "Parallel project instance manager — plant, adopt, uproot, and monitor isolated copies of your codebase",
   "type": "module",
   "bin": {
-    "grove": "./dist/cli.js"
+    "grove": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "commands"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "parallel",
+    "instances",
+    "environments",
+    "ports",
+    "isolation",
+    "worktree"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CaptainCrouton89/grove.git"
+  },
+  "license": "MIT",
   "dependencies": {
     "commander": "^13.0.0"
   },
