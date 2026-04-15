@@ -26,6 +26,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Upgrade npm for OIDC publish support
+        run: |
+          npm cache clean --force || true
+          npm install -g npm@latest --force
+
       - run: pnpm install --frozen-lockfile
 
       - name: Bump version
