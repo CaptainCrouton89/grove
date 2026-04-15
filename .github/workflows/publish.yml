@@ -25,8 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          registry-url: https://registry.npmjs.org
 
-      - run: npm install -g npm@10
       - run: pnpm install --frozen-lockfile
 
       - name: Bump version
