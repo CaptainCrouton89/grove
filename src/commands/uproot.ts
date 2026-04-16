@@ -1,7 +1,11 @@
 import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
 import readline from "readline";
 import { loadRegistry, saveRegistry } from "../registry.js";
-import { computePorts } from "../ports.js";
+import { computePorts, checkPort } from "../ports.js";
+import { loadRepoConfig } from "../config.js";
+import { stopInstanceServices } from "../process.js";
 
 interface UprootOptions {
   force?: boolean;
@@ -61,6 +65,14 @@ export async function uproot(ref: string, options: UprootOptions) {
 
   const ports = computePorts(proj.ports, instance.slot);
 
+  if (Object.keys(ports).length) {
+    console.log(`  Ports:`);
+    for (const [svc, port] of Object.entries(ports)) {
+      const up = await checkPort(port);
+      console.log(`    ${svc}: ${port} ${up ? "\x1b[32m●\x1b[0m" : "\x1b[90m○\x1b[0m"}`);
+    }
+  }
+
   if (!options.force) {
     if (!process.stdin.isTTY) {
       console.error("Error: non-interactive shell. Use --force to skip confirmation.");
@@ -73,26 +85,73 @@ export async function uproot(ref: string, options: UprootOptions) {
     }
   }
 
+  // --- Phase 1: Stop services ---
+  console.log("\nStopping services...");
+  const { killed, portsFreed } = await stopInstanceServices(instance.path, ports);
+
+  if (killed > 0) {
+    console.log(`  Killed ${killed} process${killed > 1 ? "es" : ""}.`);
+  } else {
+    console.log("  No running services found.");
+  }
+
+  if (!portsFreed) {
+    console.log("\n\x1b[33m⚠\x1b[0m Some ports could not be freed. Continuing with teardown.");
+  }
+
+  // --- Phase 2: Run teardown script if configured ---
   if (exists) {
-    console.log(`Removing ${instance.path}...`);
+    const repoConfig = loadRepoConfig(instance.path);
+    const teardownScript = repoConfig?.teardownScript ?? proj.teardownScript;
+
+    if (teardownScript) {
+      const scriptPath = path.join(instance.path, teardownScript);
+      const fallbackPath = path.join(proj.source, teardownScript);
+      const resolvedPath = fs.existsSync(scriptPath) ? scriptPath : fs.existsSync(fallbackPath) ? fallbackPath : null;
+
+      if (resolvedPath) {
+        console.log(`\nRunning teardown script: ${teardownScript}`);
+        const env: Record<string, string> = {
+          ...(process.env as Record<string, string>),
+          GROVE_SLOT: String(instance.slot),
+          GROVE_SOURCE: proj.source,
+          GROVE_TARGET: instance.path,
+          GROVE_INSTANCE_NAME: instanceName,
+          GROVE_PORTS_JSON: JSON.stringify(ports),
+        };
+        for (const [portName, portValue] of Object.entries(ports)) {
+          env[`GROVE_PORT_${portName.toUpperCase().replace(/-/g, "_")}`] = String(portValue);
+        }
+        try {
+          execSync(`bash "${resolvedPath}"`, {
+            stdio: "inherit",
+            cwd: instance.path,
+            env,
+          });
+        } catch {
+          console.error("  Warning: teardown script failed.");
+        }
+      }
+    }
+  }
+
+  // --- Phase 3: Remove directory ---
+  if (exists) {
+    console.log(`\nRemoving ${instance.path}...`);
     fs.rmSync(instance.path, { recursive: true, force: true });
   }
 
+  // --- Phase 4: Update registry ---
   proj.instances.splice(idx, 1);
   saveRegistry(registry);
 
   console.log(`\nUprooted ${project}/${instanceName}.`);
 
-  // Print cleanup hints
+  // Print remaining cleanup hint (database only — processes are handled)
   if (Object.keys(ports).length) {
-    console.log("\nCleanup hints:");
-    console.log("  Check for leftover processes:");
-    for (const [svc, port] of Object.entries(ports)) {
-      console.log(`    lsof -i :${port}  # ${svc}`);
-    }
-    console.log(`  Drop the slot database if applicable:`);
+    console.log(`\nCleanup hint — drop the slot database if applicable:`);
     console.log(
-      `    psql "postgresql://postgres:vallum@localhost:5433/postgres" -c "DROP DATABASE IF EXISTS vallum_slot${instance.slot};"`,
+      `  psql "postgresql://postgres:vallum@localhost:5433/postgres" -c "DROP DATABASE IF EXISTS vallum_slot${instance.slot};"`,
     );
   }
 }

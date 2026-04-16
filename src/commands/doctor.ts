@@ -1,5 +1,7 @@
 import fs from "fs";
 import { loadRegistry, saveRegistry } from "../registry.js";
+import { computePorts } from "../ports.js";
+import { stopInstanceServices } from "../process.js";
 
 export async function doctor(project?: string) {
   const registry = loadRegistry();
@@ -36,6 +38,17 @@ export async function doctor(project?: string) {
         console.log(
           `  \x1b[31m✗\x1b[0m ${inst.name} → ${inst.path} (zombie)`,
         );
+
+        // Kill any services still running for this zombie instance
+        const ports = computePorts(proj.ports, inst.slot);
+        console.log(`    Stopping zombie services...`);
+        const { killed } = await stopInstanceServices(inst.path, ports);
+        if (killed > 0) {
+          console.log(`    Killed ${killed} zombie process${killed > 1 ? "es" : ""}.`);
+        } else {
+          console.log(`    No running services.`);
+        }
+
         zombieIdxs.push(i);
       }
     }
