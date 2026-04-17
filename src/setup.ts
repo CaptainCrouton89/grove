@@ -64,6 +64,49 @@ function walkDir(dir: string): string[] {
   return results;
 }
 
+/**
+ * Recursively copy `src` to `dest`. Dereferences valid symlinks (matching prior
+ * `cp -r` behavior) but skips broken symlinks with a warning instead of failing.
+ */
+function copyRecursive(src: string, dest: string): void {
+  let lstat: fs.Stats;
+  try {
+    lstat = fs.lstatSync(src);
+  } catch {
+    console.log(`  Warning: cannot stat ${src}, skipping`);
+    return;
+  }
+
+  if (lstat.isSymbolicLink()) {
+    if (!fs.existsSync(src)) {
+      console.log(`  Warning: skipping broken symlink ${src}`);
+      return;
+    }
+    const realStat = fs.statSync(src);
+    if (realStat.isDirectory()) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        copyRecursive(path.join(src, entry), path.join(dest, entry));
+      }
+    } else if (realStat.isFile()) {
+      fs.copyFileSync(src, dest);
+    }
+    return;
+  }
+
+  if (lstat.isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src)) {
+      copyRecursive(path.join(src, entry), path.join(dest, entry));
+    }
+    return;
+  }
+
+  if (lstat.isFile()) {
+    fs.copyFileSync(src, dest);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Clone repos
 // ---------------------------------------------------------------------------
@@ -128,7 +171,7 @@ export function copyFromSource(
 
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      execSync(`cp -r "${src}" "${dest}"`, { stdio: "inherit" });
+      copyRecursive(src, dest);
     } else {
       fs.copyFileSync(src, dest);
     }
