@@ -70,7 +70,7 @@ Push to `main` triggers `.github/workflows/publish.yml`:
 
 ## Companion Plugin
 
-The crouton-kit plugin at `/Users/silasrhyneer/Code/crouton-kit/plugins/grove` wraps this CLI for Claude Code:
+The companion `crouton-kit/plugins/grove` plugin wraps this CLI for Claude Code:
 - `commands/` — Seven slash commands (`/grove:seed`, `/grove:plant`, `/grove:register`, etc.) that delegate to the `grove` binary
 - `hooks/check-grove.sh` — SessionStart hook that verifies the CLI is installed globally
 - `.claude-plugin/plugin.json` — Plugin metadata
